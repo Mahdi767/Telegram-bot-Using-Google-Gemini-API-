@@ -27,9 +27,9 @@ The bot can also respond to questions about its creator and handles slow or long
 ---
 
 ## Installation
-
-1. Clone the repo:
 ```bash
+1. Clone the repo:
+
 git clone https://github.com/yourusername/telegram-gemini-bot.git
 cd telegram-gemini-bot
 
