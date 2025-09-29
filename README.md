@@ -8,8 +8,6 @@ The bot can also respond to questions about its creator and handles slow or long
 ## Features
 
 - Chat with Gemini AI naturally.
-- Custom response if user asks about the bot's creator:  
-  I was created by Mahdi using Gemini API!
 - `/start`, `/help`, and `/stop` commands.
 - Clears chat history when `/stop` is used.
 - Handles slow responses with a timeout message.
