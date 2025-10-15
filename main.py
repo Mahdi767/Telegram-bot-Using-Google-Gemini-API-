@@ -1,11 +1,24 @@
+from email import message
 import requests
 from telegram import Update,ReplyKeyboardMarkup
 from telegram.ext import ApplicationBuilder,CommandHandler,MessageHandler,filters,ContextTypes,ChatMemberHandler
 import os
+from Gemini_global.services import gemini_reply
+from Menus.fun_fact import fun_fact_menu
+from Menus.islamic_menu import islamic_menu,get_random_quran_verse,get_random_hadith
+from Menus.jokes import jokes_menu
+from Menus.Life_tips import life_tips_menu
+from Menus.quiz import quiz_menu
+from Menus.motivation import motivation_menu
+from Menus.poerty import poetry_menu
+from Menus.quotes import quotes_menu, generate_quote
+from Menus.direct_chat import direct_chat_menu,direct_chat
+from Database.database import init_db,save_user_to_db
+
 from dotenv import load_dotenv
 load_dotenv()
 
-
+# Kill python --> taskkill /F /IM python.exe
 # user name : @AI_testGeminibot
 #The token of telegram
 TELEGRAM_TOKEN = TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
@@ -17,62 +30,40 @@ GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini
 # user storage
 user_sessions ={}
 
-
-# gemini fn
-def gemini_reply(user_text):
-    # instruction_text = "From now on, if anyone asks 'Who created you?' or 'Who made you?' or similar questions in any language, your answer is 'I was created by Mahdi.' If they ask in a different language, try to translate this answer appropriately. For example, if asked in Arabic 'من أنشأك؟', you should reply 'لقد صنعت بواسطة مهدي.' Now, proceed with the user's request: "
-    # full_prompt_with_instruction = instruction_text + user_text
-
-    payload = {
-        "contents": [{"parts": [{"text": user_text}]}]
-    }
-    headers = {
-        "Content-Type": "application/json",
-        "X-goog-api-key": GEMINI_API_KEY  
-    }
-
-    try:
-        response = requests.post(GEMINI_API_URL, json=payload, headers=headers,timeout=5)
-        if response.status_code == 200:
-            data = response.json()
-            candidates = data.get("candidates")
-            if candidates and len(candidates) > 0:
-                parts = candidates[0].get("content", {}).get("parts")
-                if parts and len(parts) > 0:
-                    return parts[0].get("text", "No text found.")
-            return "Error: Gemini returned empty response."
-        return f"Error: Status code {response.status_code}"
-    except requests.exceptions.Timeout:
-        return "Sorry, Gemini is taking too long to respond. Your message might be too long or detailed. Please try asking for a shorter response, as the API has limits"
-    except Exception as e:
-        return f"Error: {e}"
-
-
-# command handler
-async def start(update:Update,context:ContextTypes.DEFAULT_TYPE):
-    # target --> /start command
-    # clear previous chat history
-    # y/n option for user
-
-    user_id = update.message.from_user.id
-    user_sessions[user_id] = []
-
-    keyboard =  [["Yes, Chat with Gemini"], ["No, Thanks"]]
-    reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
-
-    await update.message.reply_text(
-        "Hi! would you like to chat with gemini?",
-        reply_markup= reply_markup
+# ei option gula main e thakbe
+def main_menu_key():
+    return ReplyKeyboardMarkup(
+        [
+            ["💬 Direct Chat", "💡 Quotes"],
+            ["😂 Jokes", "🤯 Fun Fact"],
+            ["🧘 Life Tips", "🎮 Quiz"],
+            ["☪️ Islamic Reminder", "📅 Daily Motivation"]
+        ],
+        resize_keyboard=True
     )
 
+# gemini fn
+
+init_db()
+# command handler
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.message.from_user
+    save_user_to_db(user.id, user.first_name, user.username)
+
+    user_sessions[user.id] = {"state": "main_menu"}
+
+    await update.message.reply_text(
+        f"Welcome {user.first_name}! 🎉 Choose an option:",
+        reply_markup=main_menu_key()
+    )
 
 async def help_command(update:Update, context:ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "Commands:\n"
-        "/start - Start chatting with Gemini\n"
-        "/help - Show this message\n"
+        "/start - Show main menu\n"
+        "/help - Show help\n"
         "/stop - Stop chat and delete history\n\n"
-        "You can also type messages directly to chat with Gemini."
+        "Use the buttons to navigate menus."
     )
 
 
@@ -85,36 +76,75 @@ async def stop_chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_text("You don't have an active chat to stop.")
 
-
+# The main logic
 async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
     text = update.message.text.strip()
 
-    #  user has not started chat
     if user_id not in user_sessions:
         await update.message.reply_text("Please start a new chat using /start")
         return
 
-    # if no thanks then del everything
-    if text.lower() == "no, thanks":
-        user_sessions.pop(user_id, None)
-        await update.message.reply_text("Okay! You can start anytime with /start")
+    state = user_sessions[user_id]["state"]
+
+    # Always allow going back to main menu
+    if text == "⬅️ Main Menu" or text.lower() == "/back":
+        user_sessions[user_id]["state"] = "main_menu"
+        await update.message.reply_text("Back to Main Menu:", reply_markup=main_menu_key())
         return
 
-    # if yes then this
-    if text.lower() == "yes, chat with gemini":
-        await update.message.reply_text("Great! You can start typing your messages. Type /stop to end chat.")
+
+
+# inside chat()
+    if state == "main_menu":
+        menus = {
+            "💬 Direct Chat": {"state": "direct_chat", "msg": "You are now in Direct Chat mode.", "keyboard":  direct_chat_menu()},
+            "😂 Jokes": {"state": "jokes_menu", "msg": "Jokes Menu", "keyboard": jokes_menu()},
+            "💡 Quotes": {"state": "quotes_menu", "msg": "Quotes Menu", "keyboard": quotes_menu()},
+            "🤯 Fun Fact": {"state": "fun_fact_menu", "msg": "Fun Fact Menu", "keyboard": fun_fact_menu()},
+            "🎮 Quiz": {"state": "quiz_menu", "msg": "Quiz Menu", "keyboard": quiz_menu()},
+            "📅 Daily Motivation": {"state": "motivation_menu", "msg": "Motivation Menu", "keyboard": motivation_menu()},
+            "☪️ Islamic Reminder": {"state": "islamic_menu", "msg": "Islamic Menu", "keyboard": islamic_menu()},
+            "🧘 Life Tips": {"state": "life_tips_menu", "msg": "Life Tips Menu", "keyboard": life_tips_menu()}
+        }
+
+        # safely get menu, returns None if text not in dict
+        menu = menus.get(text)
+
+        if menu is not None:
+            user_sessions[user_id]["state"] = menu["state"]
+            await update.message.reply_text(menu["msg"], reply_markup=menu["keyboard"])
+        else:
+            await update.message.reply_text("Please use the menu buttons.", reply_markup=main_menu_key())
+
+    elif state == "quotes_menu":
+        if text == "✨ Generate Quote":
+            quote = generate_quote()
+            await update.message.reply_text(quote, reply_markup=quotes_menu())
+        else:
+            await update.message.reply_text("Please use the menu buttons.", reply_markup=quotes_menu())
         return
+    elif state == "islamic_menu":
+        if text == "📖 Quran Verse":
+            random_verse = get_random_quran_verse()
+            await update.message.reply_text(random_verse,reply_markup=islamic_menu())
+        elif text == "📜 Hadith Verse":
+            random_hadith = get_random_hadith()
+            await update.message.reply_text(random_hadith,reply_markup=islamic_menu())
+        else:
+            await update.message.reply_text("Please use the menu buttons.", reply_markup=islamic_menu())
 
-    # save user msg
-    user_sessions[user_id].append(text)
+    elif state == "direct_chat":
 
+        await update.message.reply_text("Thinking...", reply_markup=direct_chat_menu()) # Give immediate feedback
+
+        gemini_answer = direct_chat(text,timeout_seconds=8)
+
+        await update.message.reply_text(gemini_answer, reply_markup=direct_chat_menu())
   
 
-    # gemini rply
-    reply = gemini_reply(text)
-    user_sessions[user_id].append(reply)
-    await update.message.reply_text(reply)
+
+
 
 
 # if user left the chat
