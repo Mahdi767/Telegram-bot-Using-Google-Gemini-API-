@@ -18,9 +18,15 @@ def direct_chat_menu():
         resize_keyboard=True
     )
 
+
 def direct_chat(user_text: str, timeout_seconds: int = 20) -> str:
 
     response_text = gemini_reply(user_text, timeout_seconds=timeout_seconds)
     return response_text
 
         
+
+def direct_chat(text: str, timeout_seconds: int = 8) -> str:
+    response_text = gemini_reply(text, timeout_seconds=timeout_seconds)
+    return response_text
+

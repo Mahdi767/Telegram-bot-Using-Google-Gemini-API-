@@ -23,6 +23,7 @@
     #     return "Sorry, Gemini is taking too long to respond. Your message might be too long or detailed. Please try asking for a shorter response, as the API has limits"
     # except Exception as e:
     #     return f"Error: {e}"
+
 import google.generativeai as genai
 import os
 from dotenv import load_dotenv
@@ -47,3 +48,4 @@ else:
                 print(f"- {m.name}")
     except Exception as e:
         print(f"An error occurred while listing models: {e}")
+

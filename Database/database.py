@@ -4,9 +4,10 @@ from datetime import datetime
 DB_NAME = "bot_users.db"
 
 def init_db():
+    """Initialize the database with all required tables"""
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
-    
+
     # Users table
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS users (
@@ -99,3 +100,4 @@ def update_user_state(user_id, state):
     
     conn.commit()
     conn.close()
+

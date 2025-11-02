@@ -12,6 +12,7 @@ def quiz_menu():
             ["⬅️ Main Menu"]
         ],
         resize_keyboard=True
+
     )
 
 def quiz_difficulity():
@@ -34,4 +35,5 @@ def quiz_category_menu():
             ["⬅️ Back to Difficulty", "⬅️ Main Menu"]
         ],
         resize_keyboard=True
+
     )
