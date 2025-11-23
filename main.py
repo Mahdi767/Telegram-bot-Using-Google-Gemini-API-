@@ -8,11 +8,12 @@ from Gemini_global.img_service import generate_image_from_prompt
 from Menus.fun_fact import fun_fact_menu,generate_fact
 from Menus.islamic_menu import islamic_menu,get_random_quran_verse,get_random_hadith
 from Menus.story import generate_story,story_menu
-from Menus.quiz import quiz_menu,quiz_difficulity,quiz_category_menu
+from Menus.quiz import quiz_menu,quiz_difficulity,quiz_category_menu, generate_quiz, quiz_options_keyboard
 from Menus.mythVSfact import myth_vs_fact,mythvsfact_menu
 from Menus.quotes import quotes_menu, generate_quote
 from Menus.direct_chat import direct_chat_menu,direct_chat
 from Menus.generate_img import generate_img_menu
+from Menus.class_routine import class_routine_menu, get_class_routine_message
 from Database.database import init_db,save_user_to_db,update_user_state,log_interaction
 
 
@@ -36,7 +37,7 @@ def main_menu_key():
     return ReplyKeyboardMarkup(
         [
             ["💬 Direct Chat", "💡 Quotes"],
-            ["📜 Story", "🤯 Fun Fact"],
+            ["📜 Story", "🗓️Class Routine"],
             ["🖼️ Generate Image", "🎮 Quiz"],
             ["☪️ Islamic Reminder", "🧐 Myth vs. Fact"]
         ],
@@ -103,11 +104,12 @@ async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "💬 Direct Chat": {"state": "direct_chat", "msg": "You are now in Direct Chat mode.", "keyboard":  direct_chat_menu()},
             "📜 Story": {"state": "story_menu", "msg": "Story menu", "keyboard": story_menu()},
             "💡 Quotes": {"state": "quotes_menu", "msg": "Quotes Menu", "keyboard": quotes_menu()},
-            "🤯 Fun Fact": {"state": "fun_fact_menu", "msg": "Fun Fact Menu", "keyboard": fun_fact_menu()},
+
             "🎮 Quiz": {"state": "quiz_menu", "msg": "Quiz Menu", "keyboard": quiz_menu()},
             "🧐 Myth vs. Fact": {"state": "mythvsfact_menu", "msg": "Myth Vs.fact menu", "keyboard": mythvsfact_menu()},
             "☪️ Islamic Reminder": {"state": "islamic_menu", "msg": "Islamic Menu", "keyboard": islamic_menu()},
-            "🖼️ Generate Image": {"state": "generate_img_menu", "msg": "Please Enter a prompt:", "keyboard": generate_img_menu()}
+            "🖼️ Generate Image": {"state": "generate_img_menu", "msg": "Please Enter a prompt:", "keyboard": generate_img_menu()},
+            "🗓️Class Routine": {"state": "class_routine", "msg": "Fetching the latest class info...", "keyboard": class_routine_menu()},
         }
 
         # safely get menu, returns None if text not in dict
@@ -117,6 +119,9 @@ async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
             user_sessions[user_id]["state"] = menu["state"]
             update_user_state(user_id, menu["state"])
             await update.message.reply_text(menu["msg"], reply_markup=menu["keyboard"])
+            if text == "🗓️Class Routine":
+                class_message = get_class_routine_message()
+                await update.message.reply_text(class_message, reply_markup=class_routine_menu())
         else:
             await update.message.reply_text("Please use the menu buttons.", reply_markup=main_menu_key())
 
@@ -134,13 +139,16 @@ async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             await update.message.reply_text("Please use the menu buttons.", reply_markup=story_menu())
         return
-    elif state == "fun_fact_menu":
-        if text == "🤯 Generate Fun Fact":
-            fact = generate_fact()
-            await update.message.reply_text(fact,reply_markup=fun_fact_menu())
-        else:
-            await update.message.reply_text("Please use the menu buttons.", reply_markup=fun_fact_menu())
-        return
+    # elif state == "fun_fact_menu":
+    #     if text == "🤯 Generate Fun Fact":
+    #         fact = generate_fact()
+    #         await update.message.reply_text(fact,reply_markup=fun_fact_menu())
+    #     elif text == "🕓 Current Class Info":
+    #         class_message = get_class_routine_message()
+    #         await update.message.reply_text(class_message, reply_markup=fun_fact_menu())
+    #     else:
+    #         await update.message.reply_text("Please use the menu buttons.", reply_markup=fun_fact_menu())
+    #     return
     elif state == "mythvsfact_menu":
         if text == "🧐 Generate Myth vs. Fact":
             myth = myth_vs_fact()
@@ -181,6 +189,16 @@ async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Thinking...", reply_markup=direct_chat_menu())
         gemini_answer = direct_chat(text,timeout_seconds=8)
         await update.message.reply_text(gemini_answer, reply_markup=direct_chat_menu())
+    elif state == "class_routine":
+        if text in ["🗓️Class Routine", "📅 Refresh Routine"]:
+            class_message = get_class_routine_message()
+            await update.message.reply_text(class_message, reply_markup=class_routine_menu())
+        else:
+            await update.message.reply_text(
+                "Tap Refresh Routine for the latest schedule or go back to the main menu.",
+                reply_markup=class_routine_menu(),
+            )
+        return
     elif state == "quiz_menu":
         
         if text == "❓ Start Quiz":
@@ -188,18 +206,56 @@ async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("Choose difficulty:", reply_markup=quiz_difficulity())
 
         elif text in ["🟢 Easy", "🟠 Medium", "🔴 Hard"]:
-   
+            user_sessions[user_id]["quiz_difficulty"] = text
             await update.message.reply_text("Choose category", reply_markup=quiz_category_menu())
         
   
         elif text in ["🧠 General Knowledge", "💻 Technology", "🔬 Science", "📜 History", "⚽ Sports", "🗺️ Geography"]:
-      
-            await update.message.reply_text(f"Starting {text} quiz!")
+            user_sessions[user_id]["quiz_category"] = text
+            difficulty = user_sessions[user_id].get("quiz_difficulty", "🟢 Easy")
+            
+            await update.message.reply_text(f"Generating a {difficulty} question about {text}...")
+            
+            quiz_data = generate_quiz(difficulty, text)
+            
+            if quiz_data:
+                user_sessions[user_id]["quiz_answer"] = quiz_data["correct_text"]
+                user_sessions[user_id]["state"] = "quiz_active"
+                update_user_state(user_id, "quiz_active")
+                
+                await update.message.reply_text(
+                    f"❓ Question:\n{quiz_data['question']}",
+                    reply_markup=quiz_options_keyboard(quiz_data["options"])
+                )
+            else:
+                await update.message.reply_text("Failed to generate quiz. Please try again.", reply_markup=quiz_category_menu())
         
+        elif text == "⬅️ Back to Difficulty":
+             await update.message.reply_text("Choose difficulty:", reply_markup=quiz_difficulity())
+
         else:
          
             await update.message.reply_text("Please use the menu buttons.", reply_markup=quiz_difficulity())
         
+        return
+
+    elif state == "quiz_active":
+        correct_answer = user_sessions[user_id].get("quiz_answer", "")
+        
+        if text == correct_answer:
+            await update.message.reply_text("✅ Correct! Well done!", reply_markup=quiz_category_menu())
+            # Reset to quiz menu to allow choosing another category or same one
+            user_sessions[user_id]["state"] = "quiz_menu"
+            update_user_state(user_id, "quiz_menu")
+            await update.message.reply_text("Choose another category to continue or go back.", reply_markup=quiz_category_menu())
+            
+        elif text in ["A)", "B)", "C)", "D)"] or any(text.startswith(p) for p in ["A)", "B)", "C)", "D)"]):
+             await update.message.reply_text(f"❌ Wrong! The correct answer was:\n{correct_answer}", reply_markup=quiz_category_menu())
+             user_sessions[user_id]["state"] = "quiz_menu"
+             update_user_state(user_id, "quiz_menu")
+             await update.message.reply_text("Choose another category to continue or go back.", reply_markup=quiz_category_menu())
+        else:
+            await update.message.reply_text("Please select one of the options.", reply_markup=None) # Keep existing keyboard
         return
 
 
@@ -222,7 +278,7 @@ def main():
     app.add_handler(CommandHandler("stop", stop_chat))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, chat))
     app.add_handler(ChatMemberHandler(handle_leave, chat_member_types=["left"]))
-    print(" Gemini is running...")
+    print(" Bot is running...")
     app.run_polling()
 
 
